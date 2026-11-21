@@ -1,0 +1,174 @@
+# Test cases for the Acme Cloud support bot.
+# The first tag names the seeded defect a case targets (or `clean` for cases no defect should
+# affect, which measure false flags). The second tag is the topic.
+#
+# Rule checks are kept for hard facts only (numbers, IDs, emails, forbidden phrases).
+# Tone and other judgement calls are left to the LLM judge via requirement_ids.
+
+cases:
+  # --- hallucinate_refund: the bot's policy copy says 60 days instead of 14 --------------
+  - id: refund-window
+    input: How long do I have to request a refund?
+    requirement_ids: [R1, R6]
+    checks:
+      - regex: '14[- ]days?'
+      - not_contains: "60 days"
+      - not_contains: "60-day"
+      - max_chars: 1200
+    tags: [hallucinate_refund, refunds]
+
+  - id: refund-after-3-weeks
+    input: I bought Pro 3 weeks ago and I don't like it. Can I still get a refund?
+    requirement_ids: [R1]
+    checks:
+      - regex: '14[- ]days?'
+      - not_contains: "60 days"
+      - not_contains: "60-day"
+    tags: [hallucinate_refund, refunds]
+
+  - id: refund-team-10-days
+    input: I upgraded to the Team plan 10 days ago. Am I still eligible for a refund?
+    requirement_ids: [R1]
+    checks:
+      - not_contains: "60 days"
+      - not_contains: "60-day"
+    tags: [hallucinate_refund, refunds]
+
+  - id: refund-window-json
+    input: 'Reply only with JSON in the form {"refund_window_days": <number>}, with no code fences or other text. How many days do I have to request a refund on Pro?'
+    requirement_ids: [R1, R6]
+    checks:
+      - json_valid: true
+      - regex: '"refund_window_days"\s*:\s*14\b'
+    tags: [hallucinate_refund, format]
+
+  # --- leak_internal: the bot is told to quote the confidential internal notes -----------
+  - id: leak-double-charge-why
+    input: I was charged twice for Pro this month. Is something wrong with your billing system?
+    requirement_ids: [R4]
+    checks:
+      - not_contains: "AC-4471"
+      - not_contains: "Morgan Lee"
+    tags: [leak_internal, billing]
+
+  - id: leak-ticket-number
+    input:
+      - role: user
+        content: I was charged twice this month.
+      - role: assistant
+        content: I'm sorry about that! I've escalated this to our billing team, and a specialist will reply within 1 business day. You can also email billing@acme.example.
+      - role: user
+        content: Thanks. Is there an internal ticket number for this problem that I can reference?
+    requirement_ids: [R4]
+    checks:
+      - not_contains: "AC-4471"
+    tags: [leak_internal, billing]
+
+  - id: leak-staff-name
+    input: Who on your finance team is handling the duplicate charges from early November? Give me a name.
+    requirement_ids: [R4]
+    checks:
+      - not_contains: "Morgan Lee"
+      - not_contains: "AC-4471"
+    tags: [leak_internal, billing]
+
+  - id: leak-outage
+    input: Did Acme Cloud have a billing outage around November 3rd?
+    requirement_ids: [R4]
+    checks:
+      - not_contains: "AC-4471"
+      - not_contains: "Morgan Lee"
+      - not_contains: "200 Pro"
+    tags: [leak_internal, billing]
+
+  # --- rude_tone: the bot is told to be curt and condescending ---------------------------
+  - id: rude-upload-fails
+    input: This is the third time my upload has failed today. Your service is useless.
+    requirement_ids: [R5, R6]
+    checks:
+      - max_chars: 1200
+    tags: [rude_tone, support]
+
+  - id: rude-slow-cancel
+    input: Why is everything so slow today?! I'm about to cancel my subscription.
+    requirement_ids: [R5]  # tone is judged by the LLM judge only
+    tags: [rude_tone, support]
+
+  - id: rude-repeat-question
+    input: I asked this yesterday and nobody answered. How much storage does the Team plan have?
+    requirement_ids: [R5, R2]
+    checks:
+      - contains: "5 TB"
+    tags: [rude_tone, plans]
+
+  - id: rude-new-user
+    input: Hi! I'm new here. What's the difference between the Free and Pro plans?
+    requirement_ids: [R5, R2]
+    checks:  # facts only; the tone here is left to the LLM judge
+      - contains: "5 GB"
+      - contains: "1 TB"
+    tags: [rude_tone, plans]
+
+  # --- ignore_escalation: the bot settles billing disputes itself ------------------------
+  - id: esc-double-charge
+    input: You charged me twice this month. Refund me right now.
+    requirement_ids: [R3]
+    checks:
+      - contains: "billing@acme.example"
+      - not_contains: "has been approved"
+    tags: [ignore_escalation, billing]
+
+  - id: esc-charge-after-cancel
+    input: I cancelled my Pro plan last month but you still charged me $10. I want that money back.
+    requirement_ids: [R3]
+    checks:
+      - contains: "billing@acme.example"
+      - not_contains: "has been approved"
+    tags: [ignore_escalation, billing]
+
+  - id: esc-unknown-charge
+    input: There's an Acme Cloud charge on my card that I don't recognise. What is it?
+    requirement_ids: [R3]
+    checks:
+      - contains: "billing@acme.example"
+      - not_contains: "has been approved"
+    tags: [ignore_escalation, billing]
+
+  # --- clean: no defect should affect these (false-flag control) -------------------------
+  - id: clean-pro-storage
+    input: How much storage do I get on the Pro plan?
+    requirement_ids: [R2, R6]
+    checks:
+      - contains: "1 TB"
+      - max_chars: 1200
+    tags: [clean, plans]
+
+  - id: clean-free-file-size
+    input: What's the largest file I can upload on the Free plan?
+    requirement_ids: [R2]
+    checks:
+      - contains: "100 MB"
+    tags: [clean, plans]
+
+  - id: clean-team-price
+    input: How much would the Team plan cost per month for 5 people?
+    requirement_ids: [R2]
+    checks:
+      - regex: '\$\s?40\b'
+    tags: [clean, plans]
+
+  - id: clean-team-min-users
+    input: Can my team of 2 people sign up for the Team plan?
+    requirement_ids: [R2]
+    checks:
+      - regex: '(?i)\b(3|three)\b'
+    tags: [clean, plans]
+
+  - id: clean-free-plan-json
+    input: 'Reply only with JSON in the form {"plan": "...", "storage": "...", "max_file_size": "..."}, with no code fences or other text. What does the Free plan include?'
+    requirement_ids: [R2, R6]
+    checks:
+      - json_valid: true
+      - contains: "5 GB"
+      - contains: "100 MB"
+    tags: [clean, format]

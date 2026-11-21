@@ -1,0 +1,39 @@
+# Test cases. Each case runs `trials` times (default: config.yaml `trials`).
+#
+# Rule checks (shorthand form):
+#   - contains: "text"        output must include text (case-insensitive by default)
+#   - not_contains: "text"    output must not include text
+#   - regex: "pattern"        output must match the Python regex (use (?i) to ignore case)
+#   - max_chars: 600          output length limit
+#   - json_valid: true        output must parse as JSON
+# Full form, e.g. for case-sensitive matching:
+#   - {type: contains, value: "Acme", case_sensitive: true}
+
+cases:
+  - id: refund-window
+    input: How long do I have to ask for a refund?
+    requirement_ids: [R1]
+    checks:
+      - regex: '14[- ]days?'
+      - not_contains: "30 days"
+      - not_contains: "60 days"
+      - max_chars: 800
+    tags: [billing, refunds]
+
+  - id: billing-dispute
+    input: You charged me twice this month. I want my money back right now.
+    requirement_ids: [R3, R5]
+    checks:
+      - contains: "billing@acme.example"
+    tags: [billing, escalation]
+
+  - id: pro-storage-json
+    input:
+      - role: user
+        content: 'Reply only with JSON like {"plan": "...", "storage": "..."}. How much storage does the Pro plan include?'
+    requirement_ids: [R2]
+    checks:
+      - json_valid: true
+      - contains: "1 TB"
+    tags: [plans, format]
+    trials: 3

@@ -1,0 +1,220 @@
+{% set s = scores %}
+{% set d = scores.defects %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vouch · {{ meta.suite }} · {{ meta.run_id }}</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --fg: #1c1c1e; --muted: #66666d; --line: #e3e3df;
+    --good: #1f7a3a; --good-bg: #e6f4ea; --bad: #b42318; --bad-bg: #fdecea;
+    --warn: #9a5b00; --warn-bg: #fff4e0; --quote: #f1f1ee; --accent: #3355cc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --panel: #1d1d20; --fg: #ececee; --muted: #a0a0a8; --line: #33333a;
+      --good: #6fd08f; --good-bg: #173322; --bad: #ff8a80; --bad-bg: #3a1a18;
+      --warn: #ffc266; --warn-bg: #3a2c12; --quote: #26262b; --accent: #8fa8ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .meta { color: var(--muted); margin: 0; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 20px 0 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .label { color: var(--muted); font-size: 12px; }
+  .card .value { font-size: 26px; font-weight: 650; line-height: 1.25; }
+  .card .sub { color: var(--muted); font-size: 12px; }
+  .good { color: var(--good); } .bad { color: var(--bad); } .warn { color: var(--warn); } .na { color: var(--muted); }
+  .note { color: var(--muted); font-size: 13px; margin: 6px 0; }
+  .callout { background: var(--warn-bg); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 12px 0; }
+  .scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tag { display: inline-block; background: var(--quote); border-radius: 4px; padding: 0 6px; margin: 1px 2px 1px 0; font-size: 12px; }
+  .pill { display: inline-block; border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; }
+  .pill.good { background: var(--good-bg); } .pill.bad { background: var(--bad-bg); } .pill.warn { background: var(--warn-bg); }
+  .pill.na { background: var(--quote); }
+  .item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; }
+  .item ul { margin: 0; padding-left: 18px; }
+  .item li { margin: 4px 0; }
+  blockquote { margin: 6px 0; padding: 6px 10px; background: var(--quote); border-left: 3px solid var(--bad); border-radius: 4px; }
+  .item.review blockquote { border-left-color: var(--warn); }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--quote); padding: 8px 10px; border-radius: 6px; margin: 6px 0;
+        font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .io-label { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Vouch report: {{ meta.suite }}</h1>
+  <p class="meta">Run <b>{{ meta.run_id }}</b> · started {{ meta.started_at or "unknown" }} · target <code>{{ meta.target }}</code></p>
+  <p class="meta">App model <b>{{ meta.app_model }}</b>{% if meta.get("app_model_source") == "target" %} (reported by the app){% elif meta.get("target_type") == "http" %} (as configured; the HTTP app picks its own model){% endif %}
+    · Judge <b>{{ meta.judge_model if judged else "off (rule checks only)" }}</b>{% if judged %}, temperature {{ meta.get("judge_temperature", suite.config.judge_temperature) }}{% endif %}</p>
+</header>
+
+<section class="cards">
+  <div class="card"><div class="label">Overall pass rate (pass^1)</div>
+    <div class="value {{ s.pass_rate | rate_class }}">{{ s.pass_rate | pct }}</div>
+    <div class="sub">{{ s.trials_passed }} / {{ s.trials }} trials · {{ s.graded | length }} cases</div></div>
+  <div class="card"><div class="label">pass^{{ s.k }}</div>
+    <div class="value {{ s.pass_k | rate_class }}">{{ s.pass_k | pct }}</div>
+    <div class="sub">all {{ s.k }} trials of a case pass</div></div>
+  {% if d.mode == "seeded" %}
+  <div class="card"><div class="label">Seeded-defect detection</div>
+    <div class="value {{ d.detection_rate | rate_class }}">{{ d.detection_rate | pct }}</div>
+    <div class="sub">{{ d.detected | length }} / {{ d.defect_cases | length }} cases targeting an active defect caught</div></div>
+  {% elif d.mode == "clean" %}
+  <div class="card"><div class="label">Seeded defects</div>
+    <div class="value good">None</div>
+    <div class="sub">No seeded defects active (clean run)</div></div>
+  {% endif %}
+  {% if d.control_cases %}
+  <div class="card"><div class="label">False positives</div>
+    <div class="value {{ 'good' if not d.false_positives else 'bad' }}">{{ d.false_positive_rate | pct }}</div>
+    <div class="sub">{{ d.false_positives | length }} / {{ d.control_cases | length }} {{ d.control_label }} flagged</div></div>
+  {% endif %}
+  {% if judged %}
+  <div class="card"><div class="label">Judgments (requirement × trial)</div>
+    <div class="value"><span class="good">{{ s.judgments["pass"] }}</span> / <span class="bad">{{ s.judgments["fail"] }}</span> / <span class="warn">{{ s.judgments["unknown"] }}</span></div>
+    <div class="sub">pass / fail / unknown</div></div>
+  {% endif %}
+  <div class="card"><div class="label">Needs human review</div>
+    <div class="value {{ 'warn' if unknown_count else 'good' }}">{{ unknown_count }}</div>
+    <div class="sub">unknown verdicts in {{ unknowns | length }} trial(s)</div></div>
+</section>
+
+<p class="note">A trial passes only if the app answered, every rule check passed and every judged requirement passed; errors and
+  <i>unknown</i> verdicts count as not passing. pass^k is the chance that <i>all</i> k fresh runs of a case pass, estimated as
+  C(c,k)/C(n,k) from c passes in n trials.{% if d.defect_cases or d.control_cases %} A case counts as caught or flagged if at least one
+  trial did not pass, including trials waiting for review.{% endif %}</p>
+<div class="callout"><b>Judge calibration:</b> not measured for this run. Until the judge is checked against human labels, treat its verdicts as unverified.</div>
+
+<h2>Seeded defects</h2>
+{% if d.mode == "clean" %}
+<p class="note">No seeded defects active (clean run; source: {{ meta.get("defects_source", "unknown") }}). Every case should pass, so any flagged case counts as a false positive.</p>
+{% elif d.mode == "unknown" %}
+<p class="note">Active seeded defects were not reported by the target, so detection isn't measured. False positives are counted on cases tagged <code>{{ suite.config.clean_tag }}</code>.
+  Rebuild with <code>vouch report &lt;run_dir&gt; --defects ...</code> to set them.</p>
+{% else %}
+<p class="note">Active in this run: {% for a in d.active %}<span class="tag">{{ a }}</span>{% endfor %} (source: {{ meta.get("defects_source", "unknown") }})</p>
+<div class="scroll"><table>
+  <tr><th>Defect</th><th class="num">Cases</th><th class="num">Caught</th><th>Missed cases</th></tr>
+  {% for x in d.per_defect %}
+  <tr><td><code>{{ x.name }}</code></td><td class="num">{{ x.cases | length }}</td>
+    <td class="num"><span class="pill {{ 'good' if x.cases and not x.missed else 'bad' if x.cases else 'na' }}">{{ x.caught | length }}</span></td>
+    <td>{{ x.missed | join(", ") or "–" }}</td></tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+{% if d.false_positives %}<p class="note bad">False positives ({{ d.control_label }}): {{ d.false_positives | join(", ") }}</p>{% endif %}
+
+<h2>Cases</h2>
+<div class="scroll"><table>
+  <tr><th>Case</th><th>Tags</th><th class="num">Trials</th><th class="num">Passed</th><th class="num">Errors</th>
+    <th class="num">pass^1</th><th class="num">pass^n</th><th class="num">Rules ok</th><th class="num">Judgments p / f / u</th></tr>
+  {% for c in s.cases %}
+  <tr>
+    <td><code>{{ c.case_id }}</code></td>
+    <td>{% for t in c.tags %}<span class="tag">{{ t }}</span>{% endfor %}</td>
+    <td class="num">{{ c.n }}</td>
+    {% if c.graded %}
+    {% set j = c.judgments() %}
+    <td class="num">{{ c.passed }}</td>
+    <td class="num {{ 'bad' if c.errors else '' }}">{{ c.errors }}</td>
+    <td class="num"><span class="pill {{ c.pass_rate | rate_class }}">{{ c.pass_rate | pct }}</span></td>
+    <td class="num"><span class="pill {{ c.pass_n | rate_class }}">{{ c.pass_n | pct }}</span></td>
+    <td class="num">{{ c.rules_ok if c.rules_ok is not none else "–" }}</td>
+    <td class="num">{{ j["pass"] }} / <span class="{{ 'bad' if j['fail'] else '' }}">{{ j["fail"] }}</span> / <span class="{{ 'warn' if j['unknown'] else '' }}">{{ j["unknown"] }}</span></td>
+    {% else %}
+    <td class="num">–</td><td class="num">{{ c.errors }}</td><td class="num na" colspan="4">not graded</td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table></div>
+<p class="note">pass^n uses k = that case's own trial count n, so it is 100% only if every trial passed.</p>
+
+<h2>By requirement</h2>
+<div class="scroll"><table>
+  <tr><th>Req</th><th>Severity</th><th>Requirement</th><th class="num">Cases</th><th class="num">Pass rate</th>
+    <th class="num">pass^{{ s.k }}</th><th class="num">Judgments p / f / u</th></tr>
+  {% for r in s.requirements %}
+  <tr><td><b>{{ r.name }}</b></td><td>{{ requirements[r.name].severity }}</td><td>{{ r.description }}</td>
+    <td class="num">{{ r.cases }}</td>
+    <td class="num">{% if r.trials %}<span class="pill {{ r.pass_rate | rate_class }}">{{ r.pass_rate | pct }}</span>{% else %}–{% endif %}</td>
+    <td class="num">{% if r.cases %}{{ r.pass_k | pct }}{% else %}–{% endif %}</td>
+    <td class="num">{{ r.judgments["pass"] }} / {{ r.judgments["fail"] }} / {{ r.judgments["unknown"] }}</td></tr>
+  {% endfor %}
+</table></div>
+
+<h2>By severity</h2>
+<div class="scroll"><table>
+  <tr><th>Severity</th><th>Requirements</th><th class="num">Cases</th><th class="num">Pass rate</th>
+    <th class="num">pass^{{ s.k }}</th><th class="num">Judgments p / f / u</th></tr>
+  {% for r in s.severities %}
+  <tr><td><b>{{ r.name }}</b></td><td>{{ r.description }}</td><td class="num">{{ r.cases }}</td>
+    <td class="num">{% if r.trials %}<span class="pill {{ r.pass_rate | rate_class }}">{{ r.pass_rate | pct }}</span>{% else %}–{% endif %}</td>
+    <td class="num">{% if r.cases %}{{ r.pass_k | pct }}{% else %}–{% endif %}</td>
+    <td class="num">{{ r.judgments["pass"] }} / {{ r.judgments["fail"] }} / {{ r.judgments["unknown"] }}</td></tr>
+  {% endfor %}
+</table></div>
+<p class="note">Requirement and severity pass rates count whole trials of the linked cases.</p>
+
+<h2>Failures ({{ failures | length }} trials)</h2>
+{% if not failures %}<p class="note">No failing trials.</p>{% endif %}
+{% for f in failures %}
+<div class="item">
+  <h3><code>{{ f.case.id }}</code> · trial {{ f.grade.output.trial_idx }} {% for t in f.case.tags %}<span class="tag">{{ t }}</span>{% endfor %}</h3>
+  <ul>
+    {% if f.grade.output.error %}<li><b class="bad">Error:</b> {{ f.grade.output.error }}</li>{% endif %}
+    {% for c in f.check_failures %}<li><b>Rule</b> <code>{{ c.to_dict().label }}</code>: {{ c.detail }}</li>{% endfor %}
+    {% for j, req in f.judgments %}
+    <li><b>Judge {{ j.requirement_id }}</b>{% if req %} <span class="note">({{ req.severity }}) {{ req.text }}</span>{% endif %}
+      <blockquote>“{{ j.evidence }}”</blockquote>{{ j.reason }}</li>
+    {% endfor %}
+  </ul>
+  <details><summary>Input and output</summary>
+    <div class="io-label">Input</div><pre>{{ f.input_text }}</pre>
+    <div class="io-label">Output</div><pre>{{ f.grade.output.output or "" }}</pre>
+  </details>
+</div>
+{% endfor %}
+
+<h2>Needs human review: unknown verdicts ({{ unknown_count }})</h2>
+{% if not unknowns %}<p class="note">None.</p>{% endif %}
+{% for u in unknowns %}
+<div class="item review">
+  <h3><code>{{ u.case.id }}</code> · trial {{ u.grade.output.trial_idx }} {% for t in u.case.tags %}<span class="tag">{{ t }}</span>{% endfor %}</h3>
+  <ul>
+    {% for j, req in u.judgments %}
+    <li><b>{{ j.requirement_id }}</b>{% if req %}: {{ req.text }}{% endif %}<br>
+      <span class="warn">Reason:</span> {{ j.reason }}{% if j.raw_verdict == "fail" %} <span class="note">(the judge said fail, but its quote wasn't found in the output)</span>{% endif %}
+      {% if j.evidence %}<blockquote>“{{ j.evidence }}”</blockquote>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <div class="io-label">Input</div><pre>{{ u.input_text }}</pre>
+  <div class="io-label">Output</div><pre>{{ u.grade.output.output or "" }}</pre>
+</div>
+{% endfor %}
+
+<footer>Generated by Vouch {{ version }} at {{ generated_at }} · rebuild with <code>vouch report &lt;run_dir&gt;</code></footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Run settings for the Acme Cloud demo. Start the bot first (see README.md).
+
+target:
+  type: http
+  url: http://localhost:8000/chat
+  request_field: message     # body sent: {"message": <case input>}
+  response_path: reply       # reply read from response["reply"]
+
+app_model: gpt-4o-mini       # informational here: the bot picks its own model (ACME_MODEL)
+judge_model: gpt-4.1
+judge_temperature: 0
+trials: 5
+concurrency: 4
+timeout_s: 60
+max_retries: 3
+
+# Case tags that name the bot's seeded defects. `vouch run` asks the bot which are switched on
+# (GET /health; override with --defects a,b|none); the report then shows how many were caught.
+seeded_defects: [hallucinate_refund, leak_internal, rude_tone, ignore_escalation]
+clean_tag: clean                 # control cases that should always pass
